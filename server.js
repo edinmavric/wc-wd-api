@@ -1,9 +1,11 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3000;
+const FILE_PATH = './appointments.json'; // Path to the JSON file
 
 // Enable CORS
 app.use(cors());
@@ -11,14 +13,26 @@ app.use(cors());
 // Enable JSON body parsing
 app.use(express.json());
 
-// In-memory storage for new appointments
-const newAppointments = {};
+// Load appointments from file
+const loadAppointments = () => {
+    if (fs.existsSync(FILE_PATH)) {
+        const fileData = fs.readFileSync(FILE_PATH, 'utf-8');
+        return JSON.parse(fileData);
+    }
+    return {};
+};
+
+// Save appointments to file
+const saveAppointments = appointments => {
+    fs.writeFileSync(FILE_PATH, JSON.stringify(appointments, null, 2));
+};
+
+// In-memory storage for new appointments, loaded from file
+let newAppointments = loadAppointments();
 
 // Helper function to format dates to DD.MM.YYYY
 const formatDate = date => {
-    // If the date is already in DD.MM.YYYY format, return it
-    if (date.includes('.')) return date;
-
+    if (date.includes('.')) return date; // Already formatted
     const [year, month, day] = date.split('-');
     return `${day}.${month}.${year}`;
 };
@@ -29,11 +43,11 @@ app.get('/api/frizer', async (req, res) => {
         const response = await axios.get(
             'https://vebdizajn-4.onrender.com/api/vebdizajn/frizer'
         );
-        const data = response.data;
+        const externalData = response.data;
 
         // Adjust the year to 2025 and format dates
         const updatedData = {};
-        for (const [date, times] of Object.entries(data)) {
+        for (const [date, times] of Object.entries(externalData)) {
             const [day, month, year] = date.split('.').map(Number);
             const newDate = `${day.toString().padStart(2, '0')}.${month
                 .toString()
@@ -41,7 +55,7 @@ app.get('/api/frizer', async (req, res) => {
             updatedData[newDate] = times;
         }
 
-        // Combine updatedData with newAppointments
+        // Combine externalData with newAppointments
         const combinedData = { ...updatedData };
         for (const [date, times] of Object.entries(newAppointments)) {
             if (!combinedData[date]) {
@@ -77,6 +91,7 @@ app.post('/api/frizer', (req, res) => {
 
     if (!newAppointments[formattedDate].includes(time)) {
         newAppointments[formattedDate].push(time);
+        saveAppointments(newAppointments); // Persist the data
     }
 
     console.log(
